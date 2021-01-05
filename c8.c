@@ -74,8 +74,8 @@ int DrawScreen(Display *display, int x, int y, int c)
     int ytimesw;
     int blockY;
     int blockX;
-    x = x * BLOCK;
-    y = y * BLOCK;
+    x = x % 64 * BLOCK;
+    y = y % 32 * BLOCK;
 
     if (c == 1)
     {
@@ -184,7 +184,7 @@ int InitScreen(Display *display)
     if (SDL_Init(SDL_INIT_VIDEO) < 0)
         return 1;
 
-    if (!(display->screen = SDL_SetVideoMode(WIDTH, HEIGHT, DEPTH, SDL_SWSURFACE)))
+    if (!(display->screen = SDL_SetVideoMode(WIDTH, HEIGHT, DEPTH, SDL_HWSURFACE)))
     {
         SDL_Quit();
         return 1;
@@ -207,6 +207,14 @@ int init(c8 *c8)
         c8->V[i] = 0;
     }
 
+    for (int y = 0; y < 32; y++)
+    {
+        for (int x = 0; x < 64; x++)
+        {
+            c8->display[x][y] = 0;
+        }
+    }
+
     for (i = 0; i < 16; i++)
     {
         c8->stack[i] = 0;
@@ -220,6 +228,12 @@ int init(c8 *c8)
     for (i = 0; i < 80; i++)
     {
         c8->memory[i] = fontset[i];
+    }
+
+    /* Clear keypad */
+    for (i = 0; i < 16; i++)
+    {
+        c8->key[i] = 0;
     }
 
     c8->dt = 0;
@@ -246,7 +260,6 @@ int load_rom(char *rom, c8 *c8)
 int emulate_cycle(c8 *c8, Display *display)
 {
     c8->opcode = c8->memory[c8->PC] << 8 | c8->memory[c8->PC + 1];
-    c8->PC += 2;
 
     unsigned char x, y, kk, n;
     unsigned short nnn;
@@ -256,157 +269,62 @@ int emulate_cycle(c8 *c8, Display *display)
     n = (c8->opcode & 0x000F);
     nnn = (c8->opcode & 0x0FFF);
 
+    int opfound = 0;
+    int i, tmp;
+
+    unsigned short xcoord = 0;
+    unsigned short ycoord = 0;
+    unsigned short height = 0;
+    unsigned short pixel;
+
     switch (c8->opcode & 0xF000)
     {
-    case 0x0000:
-        switch (c8->opcode & 0x00FF)
-        {
-        case 0x00E0: //TODO cls
-            ClearDisplay(display);
-            break;
-        case 0x00EE:
-            --c8->SP;
-            c8->PC = c8->stack[c8->SP];
-            break;
-        }
-        break;
     case 0x1000:
-        c8->PC = nnn;
+        c8->PC = c8->opcode & 0x0FFF;
+
+        opfound = 1;
         break;
-    case 0x2000:
-        c8->stack[c8->SP] = c8->PC;
-        c8->SP++;
-        c8->PC = nnn;
+
+    case 0xA000:
+        c8->I = c8->opcode & 0x0FFF;
+        c8->PC = c8->PC + 2;
+        opfound = 1;
         break;
-    case 0x3000:
-        if (c8->V[x] == kk)
-        {
-            c8->PC += 2;
-        }
-        break;
+
     case 0x4000:
         if (c8->V[x] != kk)
         {
-            c8->PC += 2;
+            c8->PC = c8->PC + 4;
         }
-        break;
-    case 0x5000:
-        if (c8->V[x] == c8->V[y])
+        else
         {
-            c8->PC += 2;
+            c8->PC = c8->PC + 2;
         }
+        opfound = 1;
         break;
-    case 0x6000:
-        c8->V[x] = kk;
-        break;
-    case 0x7000:
-        c8->V[(x)] += kk;
-        break;
-    case 0x8000:
-        switch (n)
-        {
-        case 0x0000:
-            c8->V[x] = c8->V[y];
-            break;
-        case 0x0001:
-            c8->V[x] = c8->V[x] | c8->V[y];
-            break;
-        case 0x0002:
-            c8->V[x] = c8->V[x] & c8->V[y];
-            break;
-        case 0x0003:
-            c8->V[x] = c8->V[x] ^ c8->V[y];
-            break;
-        case 0x0004:
-        {
-            int i = (int)(c8->V[x]) + (int)(c8->V[y]);
-            if (i > 255)
-            {
-                c8->V[0xF] = 1;
-            }
-            else
-            {
-                c8->V[0xF] = 0;
-            }
-            c8->V[x] = i & 0xFF;
-        }
-        break;
-        case 0x0005:
-        {
-            if (c8->V[x] > c8->V[y])
-            {
-                c8->V[0xF] = 1;
-            }
-            else
-            {
-                c8->V[0xF] = 0;
-            }
-            c8->V[x] = c8->V[x] - c8->V[y];
-        }
-        break;
-        case 0x0006:
-        {
-            c8->V[0xF] = c8->V[x] & 1;
-            c8->V[x] >>= 1;
-        }
-        break;
-        case 0x0007:
-        {
-            if (c8->V[y] > c8->V[x])
-            {
-                c8->V[0xF] = 1;
-            }
-            else
-            {
-                c8->V[0xF] = 0;
-            };
-            c8->V[x] = c8->V[y] - c8->V[x];
-        }
-        break;
-        case 0x000E:
-        {
-            c8->V[0xF] = c8->V[x] >> 7;
-            c8->V[x] <<= 1;
-        }
-        break;
-        default:
-            printf("Op %x\n", c8->opcode);
-        }
-    case 0x9000:
-    {
-        if (c8->V[x] != c8->V[y])
-        {
-            c8->PC += 2;
-        }
-    }
-    break;
-    case 0xA000:
-    {
-        c8->I = nnn;
-    }
-    break;
-    case 0xB000:
-    {
-        c8->PC = (nnn) + c8->V[0x0];
-    }
-    break;
-    case 0xC000:
-    {
-        c8->V[x] = 9 & kk;
-    }
-    break;
-    case 0xD000:
-    {
-        c8->V[0xF] = 0;
-        unsigned short height = c8->opcode & 0x000F;
-        unsigned short xcoord = c8->V[x];
-        unsigned short ycoord = c8->V[y];
-        unsigned short pixel;
 
-        for (int i = 0; i < height; i++)
+    case 0xC000:
+        c8->V[x] = 9 & kk;
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0x6000:
+        c8->V[x] = c8->opcode & 0x00FF;
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0xD000:
+        c8->V[0xF] = 0;
+        height = c8->opcode & 0x000F;
+        xcoord = c8->V[x];
+        ycoord = c8->V[y];
+
+        for (i = 0; i < height; i++)
         {
             pixel = c8->memory[c8->I + i];
-            for (int x = 0; x < 8; x++)
+            for (x = 0; x < 8; x++)
             {
                 if ((pixel & (0x80 >> x)) != 0)
                 {
@@ -418,105 +336,256 @@ int emulate_cycle(c8 *c8, Display *display)
         }
 
         c8->draw = 1;
-    }
-    break;
-    case 0xE000:
-    {
-        switch (kk)
-        {
-        case 0x009E:
-        {
-            if (c8->key[c8->V[x]] != 0)
-            {
-                c8->PC = c8->PC + 2;
-            }
-        }
+        c8->PC = c8->PC + 2;
+        opfound = 1;
         break;
-        case 0x00A1:
-        {
-            if (c8->key[c8->V[x]] != 1)
-            {
-                c8->PC = c8->PC + 2;
-            }
-        }
+
+    case 0x2000: /* Checked */
+        c8->stack[c8->SP] = c8->PC;
+        c8->SP++;
+        c8->PC = c8->opcode & 0x0FFF;
+        opfound = 1;
         break;
-        }
-    }
-    break;
-    case 0xF000:
-    {
-        switch (kk)
+
+    case 0x3000:
+        if (c8->V[x] == kk)
         {
-        case 0x0007:
-        {
-            c8->V[x] = c8->dt;
+            c8->PC = c8->PC + 4;
         }
+        else
+        {
+            c8->PC = c8->PC + 2;
+        }
+        opfound = 1;
         break;
-        case 0x000A:
-        {
-            for (int i = 0; i < 16; i++)
-            {
-                if (c8->key[i] != 0)
-                {
-                    c8->V[x] = c8->key[i];
-                }
-            }
-        }
+
+    case 0x7000: /* Checked */
+        c8->V[x] = c8->V[x] + kk;
+        c8->PC = c8->PC + 2;
+        opfound = 1;
         break;
-        case 0x0015:
-        {
-            c8->dt = c8->V[x];
-        }
-        break;
-        case 0x0018:
-        {
-            c8->st = c8->V[x];
-        }
-        break;
-        case 0x001E:
-        {
-            c8->I = c8->I + c8->V[x];
-        }
-        break;
-        case 0x0029:
-        {
-            c8->I = c8->V[x] * 5;
-        }
-        break;
-        case 0x0033:
-        {
-            int vX;
-            vX = c8->V[x];
-            c8->memory[c8->I] = (vX - (vX % 100)) / 100;
-            vX -= c8->memory[c8->I] * 100;
-            c8->memory[c8->I + 1] = (vX - (vX % 10)) / 10;
-            vX -= c8->memory[c8->I + 1] * 10;
-            c8->memory[c8->I + 2] = vX;
-        }
-        break;
-        case 0x0055:
-        {
-            for (int i = 0; i<x; i++)
-            {
-                c8->memory[c8->I + i] = c8->V[x];
-            }
-        }
-        break;
-        case 0x0065:
-        {
-            for (int i = 0; i <= x; i++)
-            {
-                c8->V[i] = c8->memory[c8->I + i];
-            }
-        }
-        break;
-        }
-    }
-    break;
-    default:
-        printf("OPCODE ERROR: %x\n", c8->opcode);
     }
 
+    if (opfound == 1)
+    {
+        decTimers(c8);
+        return 0;
+    }
+
+    switch (c8->opcode & 0xF0FF)
+    {
+    case 0xF00A:
+        for (i = 0; i < 16; i++)
+        {
+            if (c8->key[i] != 0)
+            {
+                c8->V[x] = c8->key[i];
+                c8->PC = c8->PC + 2;
+            }
+        }
+        opfound = 1;
+        break;
+
+    case 0xF01E:
+        c8->I = c8->I + c8->V[x];
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0xF018:
+        c8->st = c8->V[x];
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0xF033:
+        c8->memory[c8->I] = c8->V[x] / 100;
+        c8->memory[c8->I + 1] = (c8->V[x] / 10) % 10;
+        c8->memory[c8->I + 2] = (c8->V[x] / 1) % 10;
+
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0xE09E:
+        if (c8->key[c8->V[x]] != 0)
+        {
+            c8->PC = c8->PC + 4;
+        }
+        else
+        {
+            c8->PC = c8->PC + 2;
+        }
+        opfound = 1;
+        break;
+
+    case 0xE0A1:
+        if (c8->key[c8->V[x]] != 1)
+        {
+            c8->PC = c8->PC + 4;
+        }
+        else
+        {
+            c8->PC = c8->PC + 2;
+        }
+        opfound = 1;
+        break;
+
+    case 0xF007:
+        c8->V[x] = c8->dt;
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0xF015:
+        c8->dt = c8->V[x];
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0xF065:
+        for (i = 0; i <= (x); i++)
+        {
+            c8->V[i] = c8->memory[c8->I + i];
+            opfound = 1;
+        }
+        c8->PC = c8->PC + 2;
+        break;
+
+    case 0xF029:
+        c8->I = c8->V[x] * 5;
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0xF055:
+        for (i = 0; i < x; i++)
+        {
+            c8->memory[c8->I + i] = c8->V[x];
+        }
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+    }
+
+    if (opfound == 1)
+    {
+        decTimers(c8);
+        return 0;
+    }
+
+    switch(c8->opcode & 0x00FF)
+    {
+    case 0x00E0:
+        ClearDisplay(display);
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0x00EE:
+        c8->SP = c8->SP - 1;
+        c8->PC = c8->stack[c8->SP];
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+    }
+
+    if (opfound == 1)
+    {
+        decTimers(c8);
+        return 0;
+    }
+
+    switch (c8->opcode & 0xF00F)
+    {
+    case 0x8000:
+        c8->V[x] = c8->V[y];
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+    case 0x8002:
+        c8->V[x] = c8->V[x] & c8->V[y];
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+    case 0x8003:
+        c8->V[x] = c8->V[x] ^ c8->V[y];
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+    case 0x8004:
+        tmp = c8->V[x];
+        c8->V[x] = c8->V[x] + c8->V[y];
+
+        if ((tmp + c8->V[y]) > 255)
+        {
+            c8->V[0xF] = 1;
+        }
+        else
+        {
+            c8->V[0xF] = 0;
+        }
+
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0x8005:
+        if (c8->V[x] > c8->V[y])
+        {
+            c8->V[0xF] = 1;
+        }
+        else
+        {
+            c8->V[0xF] = 0;
+        }
+        c8->V[x] = c8->V[x] - c8->V[y];
+
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+    case 0x800E:
+        if ((c8->V[x] >> 8) == 1)
+        {
+            c8->V[0xF] = 1;
+        }
+        else
+        {
+            c8->V[0xF] = 0;
+        }
+        c8->V[x] = c8->V[x] * 2;
+        c8->PC = c8->PC + 2;
+        opfound = 1;
+        break;
+
+    case 0x9000:
+        if (c8->V[x] != c8->V[y])
+        {
+            c8->PC = c8->PC + 4;
+        }
+        else
+        {
+            c8->PC = c8->PC + 2;
+        }
+        opfound = 1;
+        break;
+    }
+
+    if (c8->dt > 0)
+    {
+        c8->dt = c8->dt - 1;
+    }
+
+    if (c8->st > 0)
+    {
+        c8->st = c8->st - 1;
+    }
+
+    if (opfound == 0)
+    {
+        printf("%x not found.\n", c8->opcode);
+        exit(-1);
+    }
     return 0;
 }
 
