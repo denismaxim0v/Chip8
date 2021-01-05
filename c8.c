@@ -275,7 +275,7 @@ int emulate_cycle(c8 *c8, Display *display)
         break;
     case 0x2000:
         c8->stack[c8->SP] = c8->PC;
-        ++c8->SP;
+        c8->SP++;
         c8->PC = nnn;
         break;
     case 0x3000:
@@ -392,15 +392,15 @@ int emulate_cycle(c8 *c8, Display *display)
     break;
     case 0xC000:
     {
-        c8->V[(c8->opcode & 0x0F00) >> 8] = 9 & (c8->opcode & 0x00FF);
+        c8->V[x] = 9 & kk;
     }
     break;
     case 0xD000:
     {
         c8->V[0xF] = 0;
         unsigned short height = c8->opcode & 0x000F;
-        unsigned short xcoord = c8->V[(c8->opcode & 0x0F00) >> 8];
-        unsigned short ycoord = c8->V[(c8->opcode & 0x00F0) >> 4];
+        unsigned short xcoord = c8->V[x];
+        unsigned short ycoord = c8->V[y];
         unsigned short pixel;
 
         for (int i = 0; i < height; i++)
@@ -426,7 +426,7 @@ int emulate_cycle(c8 *c8, Display *display)
         {
         case 0x009E:
         {
-            if (c8->key[c8->V[(c8->opcode & 0x0F00) >> 8]] != 0)
+            if (c8->key[c8->V[x]] != 0)
             {
                 c8->PC = c8->PC + 2;
             }
@@ -434,7 +434,7 @@ int emulate_cycle(c8 *c8, Display *display)
         break;
         case 0x00A1:
         {
-            if (c8->key[c8->V[(c8->opcode & 0x0F00) >> 8]] != 1)
+            if (c8->key[c8->V[x]] != 1)
             {
                 c8->PC = c8->PC + 2;
             }
@@ -458,8 +458,7 @@ int emulate_cycle(c8 *c8, Display *display)
             {
                 if (c8->key[i] != 0)
                 {
-                    c8->V[(c8->opcode & 0x0F00) >> 8] = c8->key[i];
-                    c8->PC = c8->PC + 2;
+                    c8->V[x] = c8->key[i];
                 }
             }
         }
@@ -497,15 +496,15 @@ int emulate_cycle(c8 *c8, Display *display)
         break;
         case 0x0055:
         {
-            for (int i = 0; i<(c8->opcode & 0x0F00) >> 8; i++)
+            for (int i = 0; i<x; i++)
             {
-                c8->memory[c8->I + i] = c8->V[(c8->opcode & 0x0F00) >> 8];
+                c8->memory[c8->I + i] = c8->V[x];
             }
         }
         break;
         case 0x0065:
         {
-            for (int i = 0; i <= ((c8->opcode & 0x0F00) >> 8); i++)
+            for (int i = 0; i <= x; i++)
             {
                 c8->V[i] = c8->memory[c8->I + i];
             }
