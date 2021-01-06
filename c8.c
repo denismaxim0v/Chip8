@@ -308,6 +308,9 @@ int emulate_cycle(c8 *c8, Display *display)
         c8->PC = c8->PC + 2;
         opfound = 1;
         break;
+    case 0xB000:
+        c8->PC = (nnn) + c8->V[0x0];
+        break;
 
     case 0x6000:
         c8->V[x] = c8->opcode & 0x00FF;
@@ -345,6 +348,17 @@ int emulate_cycle(c8 *c8, Display *display)
         c8->SP++;
         c8->PC = c8->opcode & 0x0FFF;
         opfound = 1;
+        break;
+
+    case 0x5000:
+        if (c8->V[x] == c8->V[y])
+        {
+            c8->PC += 4;
+        }
+        else
+        {
+            c8->PC += 2;
+        }
         break;
 
     case 0x3000:
@@ -474,7 +488,7 @@ int emulate_cycle(c8 *c8, Display *display)
         return 0;
     }
 
-    switch(c8->opcode & 0x00FF)
+    switch (c8->opcode & 0x00FF)
     {
     case 0x00E0:
         ClearDisplay(display);
